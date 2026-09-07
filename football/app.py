@@ -124,6 +124,27 @@ def team_results(team_id):
         return []
 
 
+@st.cache_data(ttl=1800, show_spinner=False)
+def season_avg(team_id, league_id):
+    """팀의 이번 시즌 평균 스탯. 경기마다 상세를 봐야 해서 캐시를 길게 잡는다."""
+    if not team_id:
+        return []
+    try:
+        return fotmob.season_stats(team_id, league_id=league_id)
+    except Exception:
+        return []
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def match_notes(match_id):
+    if not match_id:
+        return []
+    try:
+        return fotmob.insights(match_id)
+    except Exception:
+        return []
+
+
 @st.cache_data(ttl=3600, show_spinner=False)
 def team_ids():
     try:
@@ -151,9 +172,10 @@ def comps():
 
 
 @st.cache_data(ttl=600, show_spinner=False)
-def injured():
+def injured(team_id=None):
+    """결장·부상. team_id 를 주면 그 팀 것 — 상대 결장자도 같이 보려고."""
     try:
-        return fotmob.injuries()
+        return fotmob.injuries(team_id or fotmob.TEAM_ID)
     except Exception:
         return []
 
@@ -249,8 +271,32 @@ def main():
         html(view.label(f"다음 5경기 · {choice}"))
         html(view.fixtures_table(later[:5], rank_of, me))
 
+        # ── 예상 분석 ── 예측이 아니라 지금까지의 기록을 맞대 놓는다
+        opp_id = ids.get(opp)
+        opp_league = fotmob.EPL_ID if opp in rank_of else None
+        mine_avg = season_avg(ids.get(me), fotmob.EPL_ID)
+        opp_avg = season_avg(opp_id, opp_league)
+        by_title = {r["title"]: r for r in opp_avg}
+        pairs = [
+            dict(title=r["title"], home=f"{r['ours']:.2f}", away=f"{by_title[r['title']]['ours']:.2f}",
+                 home_n=r["ours"], away_n=by_title[r["title"]]["ours"])
+            for r in mine_avg if r["title"] in by_title
+        ]
+        html(view.label("예상 분석 · 이번 시즌 팀 평균 (예측이 아니라 기록입니다)"))
+        html(view.stats_card(dict(teams=[me, opp], rows=pairs), me))
+
+        notes = match_notes(nxt.get("id"))
+        names_by_id = {v: k for k, v in ids.items()}
+        if notes:
+            html(view.label("이 경기에 붙은 기록 · FotMob"))
+            html(view.notes_card([
+                dict(team=names_by_id.get(n["team_id"], ""), text=n["text"]) for n in notes
+            ]))
+
         html(view.label("결장 · 부상"))
-        html(view.injury_card(injured()))
+        left, right = st.columns(2)
+        left.markdown(view.injury_card(injured()), unsafe_allow_html=True)
+        right.markdown(view.injury_card(injured(opp_id)), unsafe_allow_html=True)
         html(view.pending_card(
             "경기 전 예상 라인업은 없습니다 — FotMob 이 경기 전에 주는 건 '지난 경기 선발'"
             "이지 예상이 아닙니다. 킥오프가 가까워지면 확정 라인업이 맨 위에 뜹니다."
