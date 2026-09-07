@@ -11,6 +11,7 @@
 """
 from __future__ import annotations
 
+import re
 from datetime import datetime
 
 from epl import CACHE_DIR, LONDON, cached_json
@@ -253,6 +254,51 @@ def lineup(match_id: int, team_id: int = TEAM_ID, ttl: int = LIVE_TTL) -> dict:
                 starters=rows(side.get("starters")), subs=rows(side.get("subs")))
 
 
+# 화면에 쓰는 이름. 모르는 항목은 FotMob 이 준 영어 제목을 그대로 쓴다.
+STAT_LABELS = {
+    "BallPossesion": "점유율 %", "expected_goals": "기대 득점 xG",
+    "total_shots": "슈팅", "ShotsOnTarget": "유효 슈팅",
+    "ShotsOffTarget": "빗나간 슈팅", "blocked_shots": "막힌 슈팅",
+    "touches_opp_box": "상대 박스 터치", "big_chance": "빅 찬스",
+    "big_chance_missed_title": "빅 찬스 실패", "accurate_passes": "정확한 패스",
+    "corners": "코너킥", "fouls": "파울", "yellow_cards": "경고",
+    "keeper_saves": "선방", "duel_won": "경합 승리",
+    "expected_goals_on_target": "유효슈팅 기대값 xGOT",
+}
+
+
+def _number(value):
+    """'372 (84%)' 이나 '1.98' 에서 막대에 쓸 숫자만. 못 읽으면 None."""
+    if isinstance(value, (int, float)):
+        return float(value)
+    m = re.match(r"[-+]?\d*\.?\d+", str(value).strip()) if value is not None else None
+    return float(m.group()) if m else None
+
+
+def match_stats(match_id: int, group: str = "top_stats", ttl: int = MATCH_TTL) -> dict:
+    """한 경기의 팀 스탯 — 기본은 'Top stats'(점유율·xG·슈팅·빅찬스…).
+
+    **xG 가 여기 있다.** 1단계에선 Understat 이 봇에게 xG 를 안 줘서 뺐던 값이다.
+    값은 [홈, 원정] 순서로 온다 — 우리 팀 기준이 아니다.
+    """
+    d = details(match_id, ttl)
+    teams = [t.get("name", "") for t in ((d.get("header") or {}).get("teams") or [])]
+    periods = ((d.get("content", {}).get("stats") or {}).get("Periods") or {})
+    groups = (periods.get("All") or {}).get("stats") or []
+    block = next((g for g in groups if g.get("key") == group), None)
+    rows = []
+    for r in (block or {}).get("stats") or []:
+        pair = r.get("stats") or [None, None]
+        if pair[0] is None or pair[1] is None:
+            continue                      # 그룹 제목 줄은 값이 비어 있다
+        rows.append(dict(
+            title=STAT_LABELS.get(r.get("key"), r.get("title", "")),
+            home=str(pair[0]), away=str(pair[1]),
+            home_n=_number(pair[0]), away_n=_number(pair[1]),
+        ))
+    return dict(teams=teams, rows=rows)
+
+
 def match_ratings(match_id: int, team_id: int = TEAM_ID) -> list[dict]:
     """한 경기에서 그 팀 선수들의 평점(높은 순). 평점이 없는 선수(미출전)는 뺀다."""
     data = details(match_id)
@@ -365,6 +411,13 @@ def _selfcheck():
     print(f"OK  {len(games)}경기 / 평점 {len(rows)}행 / 선수 {len(players)}명")
     print(f"    FotMob 시즌 평점과 대조: {len(pairs)}명, 최대 차이 {worst[0]:.2f} ({worst[1]})"
           + (" — 진행중 경기가 저쪽 평균에만 들어가 있다" if live_match() else ""))
+    stats = match_stats(fixtures()[-1]["id"])
+    assert len(stats["teams"]) == 2 and stats["rows"], "경기 스탯이 비었다"
+    xg = next((r for r in stats["rows"] if "xG" in r["title"]), None)
+    assert xg and xg["home_n"] is not None, "xG 를 못 읽었다"
+    print(f"    스탯: {stats['teams'][0]} vs {stats['teams'][1]} · "
+          + " · ".join(f"{r['title']} {r['home']}-{r['away']}" for r in stats["rows"][:3]))
+
     crests = logos()
     assert crests.get("Chelsea"), "엠블럼 주소를 못 만들었다"
     # 상대 팀 결과를 그 팀 응답에서 직접 센다 — 순위표가 말하는 경기 수와 맞아야 한다

@@ -74,6 +74,10 @@ def _fragments():
             starters=[dict(id=1, name=POISON, shirt=POISON, rating=7.3, season=8.16)],
             subs=[dict(id=2, name=POISON, shirt="", rating=6.1, season=None)],
         )),
+        "stats_card": view.stats_card(dict(
+            teams=[POISON, "Rival FC"],
+            rows=[dict(title=POISON, home=POISON, away=POISON, home_n=55.0, away_n=45.0)],
+        ), "Rival FC"),
         "injury_card": view.injury_card([dict(id=1, name=POISON, expected=POISON)]),
         "pending_card": view.pending_card(POISON),
         "plain_card": view.plain_card(POISON),
@@ -91,7 +95,7 @@ def test_이스케이프된_형태로는_실제로_들어_있다():
     frags = _fragments()
     for name in ("team", "badges", "team_card", "next_match_card", "fixtures_table",
                  "last_match_card", "standings_table", "pending_card", "results_table",
-                 "player_ratings_table", "injury_card",
+                 "player_ratings_table", "injury_card", "stats_card",
                  "live_card", "lineup_table"):
         assert ESCAPED in frags[name], f"{name} 이 팀명을 아예 안 그리고 있다"
 

@@ -41,6 +41,10 @@ CSS = """<style>
  .b{display:inline-block;width:22px;height:22px;line-height:22px;text-align:center;
     border-radius:4px;font-family:var(--mono);font-size:11px;font-weight:700;
     margin-right:4px;color:#fff}
+ .bar{display:flex;height:6px;border-radius:3px;overflow:hidden;background:var(--line);margin-top:5px}
+ .bar>i{display:block;height:100%}
+ .srow{margin:12px 0}
+ .srow .top{display:flex;justify-content:space-between;align-items:baseline;font-size:13px}
  .crest{width:18px;height:18px;object-fit:contain;vertical-align:-4px;margin-right:6px}
  table.t{width:100%;border-collapse:collapse;font-size:13px}
  table.t th{font-family:var(--mono);font-size:10px;letter-spacing:1px;text-transform:uppercase;
@@ -396,4 +400,42 @@ def lineup_table(lu: dict, now: bool = False) -> str:
         f"<th>시즌</th><th>{'지금' if now else '평점'}</th></tr>"
         + rows(lu["starters"], "") + rows(lu.get("subs") or [], "교체")
         + "</table></div>"
+    )
+
+
+def stats_card(stats: dict, me: str) -> str:
+    """경기 스탯 비교 — 값은 [홈, 원정] 순서로 온다.
+
+    막대는 두 값의 비율이다. 숫자를 못 읽는 항목('372 (84%)' 같은 것도 앞의
+    숫자를 쓴다)은 막대 없이 값만 보여준다 — 없는 비율을 지어내지 않는다.
+    """
+    teams = stats.get("teams") or ["", ""]
+    rows = stats.get("rows") or []
+    if not rows:
+        return pending_card("이 경기의 스탯이 아직 없습니다.")
+
+    mine_left = epl.short(teams[0]) == epl.short(me)
+    left_color = "var(--blue)" if mine_left else "var(--text-4)"
+    right_color = "var(--text-4)" if mine_left else "var(--blue)"
+
+    body = ""
+    for r in rows:
+        h, a = r.get("home_n"), r.get("away_n")
+        bar = ""
+        if h is not None and a is not None and (h + a) > 0:
+            pct = 100 * h / (h + a)
+            bar = (f"<div class='bar'><i style='width:{pct:.1f}%;background:{left_color}'></i>"
+                   f"<i style='width:{100 - pct:.1f}%;background:{right_color}'></i></div>")
+        body += (
+            "<div class='srow'><div class='top'>"
+            f"<span class='num' style='font-weight:600'>{esc(r['home'])}</span>"
+            f"<span class='dim'>{esc(r['title'])}</span>"
+            f"<span class='num' style='font-weight:600'>{esc(r['away'])}</span>"
+            f"</div>{bar}</div>"
+        )
+    return (
+        "<div class='card'><div style='display:flex;justify-content:space-between;"
+        "font-size:14px;font-weight:600;margin-bottom:6px'>"
+        f"<span>{team(teams[0])}</span><span>{team(teams[1])}</span></div>"
+        f"{body}</div>"
     )

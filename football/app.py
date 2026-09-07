@@ -45,6 +45,8 @@ def live_block(me):
         return
     html(view.label("진행중"))
     html(view.live_card(m, me))
+    html(view.label("경기 분석 · 실시간"))
+    html(view.stats_card(stats_of(m["id"], live=True), epl.CHELSEA))
     html(view.label("라인업 · 실시간 평점"))
     html(view.lineup_table(lu, now=True))
 
@@ -77,6 +79,15 @@ def standings():
         return fotmob.table()
     except Exception:
         return None
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def stats_of(match_id, live=False):
+    """경기 스탯. 진행중이면 계속 바뀌므로 짧은 ttl 로 다시 받는다."""
+    try:
+        return fotmob.match_stats(match_id, ttl=fotmob.LIVE_TTL if live else fotmob.MATCH_TTL)
+    except Exception:
+        return {}
 
 
 @st.cache_data(ttl=600, show_spinner=False)
@@ -253,6 +264,8 @@ def main():
     if prev and rows:
         last_id = max((r["match"] for r in rows), default=None)
         opp_name = next((r["opp"] for r in rows if r["match"] == last_id), "")
+        html(view.label(f"지난 경기 분석 · vs {opp_name}"))
+        html(view.stats_card(stats_of(last_id), me))
         html(view.label(f"지난 경기 라인업 · vs {opp_name}"))
         html(view.lineup_table(lineup_of(last_id)))
 
