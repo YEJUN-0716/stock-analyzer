@@ -264,6 +264,19 @@ STAT_LABELS = {
     "corners": "코너킥", "fouls": "파울", "yellow_cards": "경고",
     "keeper_saves": "선방", "duel_won": "경합 승리",
     "expected_goals_on_target": "유효슈팅 기대값 xGOT",
+    "shots_woodwork": "골대 맞음", "shots_inside_box": "박스 안 슈팅",
+    "shots_outside_box": "박스 밖 슈팅", "expected_goals_open_play": "오픈 플레이 xG",
+    "expected_goals_set_play": "세트피스 xG", "expected_goals_non_penalty": "PK 제외 xG",
+    "physical_metrics_distance_covered": "뛴 거리 (m)",
+    "physical_metrics_sprinting": "스프린트 거리 (m)",
+    "physical_metrics_number_of_sprints": "스프린트 횟수",
+    "passes": "패스", "own_half_passes": "자기 진영 패스",
+    "opposition_half_passes": "상대 진영 패스", "long_balls_accurate": "정확한 롱볼",
+    "accurate_crosses": "정확한 크로스", "player_throws": "스로인", "Offsides": "오프사이드",
+    "matchstats.headers.tackles": "태클", "interceptions": "인터셉트",
+    "shot_blocks": "슈팅 차단", "clearances": "걷어내기",
+    "ground_duels_won": "지상 경합 승리", "aerials_won": "공중 경합 승리",
+    "dribbles_succeeded": "드리블 성공", "red_cards": "퇴장",
 }
 
 
@@ -273,6 +286,25 @@ def _number(value):
         return float(value)
     m = re.match(r"[-+]?\d*\.?\d+", str(value).strip()) if value is not None else None
     return float(m.group()) if m else None
+
+
+# 스탯 묶음 이름. FotMob 이 주는 그룹 키 그대로다.
+GROUP_LABELS = {
+    "top_stats": "요약", "shots": "슈팅", "expected_goals": "기대 득점",
+    "physical_metrics": "활동량", "passes": "패스", "defence": "수비",
+    "duels": "경합", "discipline": "규율",
+}
+
+
+def stat_groups(match_id: int, ttl: int = MATCH_TTL) -> list[dict]:
+    """이 경기에 있는 스탯 묶음들 — 화면의 탭이 된다. 없는 묶음은 안 만든다."""
+    periods = ((details(match_id, ttl).get("content", {}).get("stats") or {}).get("Periods") or {})
+    out = []
+    for g in (periods.get("All") or {}).get("stats") or []:
+        key = g.get("key", "")
+        if any(r.get("stats") and r["stats"][0] is not None for r in g.get("stats") or []):
+            out.append(dict(key=key, title=GROUP_LABELS.get(key, g.get("title", key))))
+    return out
 
 
 def match_stats(match_id: int, group: str = "top_stats", ttl: int = MATCH_TTL) -> dict:
