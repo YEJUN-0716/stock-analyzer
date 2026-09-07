@@ -107,17 +107,27 @@ def names(team_id: int = TEAM_ID) -> dict[int, str]:
 LOGO_URL = "https://images.fotmob.com/image_resources/logo/teamlogo/{team_id:d}_small.png"
 
 
+def ids_by_name(team_id: int = TEAM_ID) -> dict[str, int]:
+    """팀 이름 → FotMob 팀 id. 순위표(리그 20팀)와 일정의 상대(컵 팀)를 함께 훑는다.
+
+    이름이 열쇠인 이유는 화면·계산이 전부 이름으로 돌기 때문이다
+    (두 소스의 이름이 epl.short() 뒤에 정확히 일치한다).
+    """
+    out = {name: tid for tid, name in names(team_id).items()}
+    for f in (team(team_id).get("fixtures", {}).get("allFixtures", {}) or {}).get("fixtures", []):
+        opp = f.get("opponent") or {}
+        if opp.get("id"):
+            out.setdefault(opp.get("name", ""), int(opp["id"]))
+    out.pop("", None)
+    return out
+
+
 def logos(team_id: int = TEAM_ID) -> dict[str, str]:
-    """팀 이름 → 엠블럼 주소. 순위표(리그 20팀)와 일정의 상대(컵 팀)를 함께 훑는다.
+    """팀 이름 → 엠블럼 주소.
 
     주소는 팀 id(정수)로만 만든다 — 외부 문자열이 주소에 섞이지 않는다.
     """
-    out = {name: LOGO_URL.format(team_id=tid) for tid, name in names(team_id).items()}
-    for f in (team(team_id).get("fixtures", {}).get("allFixtures", {}) or {}).get("fixtures", []):
-        opp = f.get("opponent") or {}
-        if opp.get("id") and opp.get("name") not in out:
-            out.setdefault(opp["name"], LOGO_URL.format(team_id=int(opp["id"])))
-    return out
+    return {name: LOGO_URL.format(team_id=tid) for name, tid in ids_by_name(team_id).items()}
 
 
 def competitions(team_id: int = TEAM_ID) -> list[dict]:
@@ -357,6 +367,13 @@ def _selfcheck():
           + (" — 진행중 경기가 저쪽 평균에만 들어가 있다" if live_match() else ""))
     crests = logos()
     assert crests.get("Chelsea"), "엠블럼 주소를 못 만들었다"
+    # 상대 팀 결과를 그 팀 응답에서 직접 센다 — 순위표가 말하는 경기 수와 맞아야 한다
+    other = next(r for r in standings if r["team"] != us["team"] and r["p"])
+    oid = ids_by_name()[other["team"]]
+    theirs_matches = as_matches(oid, ongoing=True)
+    recount = next(r for r in epl.table(theirs_matches) if r["team"] == other["team"])
+    assert recount["pts"] == other["pts"], (
+        f"{other['team']}: 우리가 센 {recount['pts']}점 vs 순위표 {other['pts']}점")
     comps = competitions()
     assert comps, "대회 목록이 비었다"
     later = schedule()
