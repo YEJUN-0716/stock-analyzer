@@ -439,3 +439,15 @@ def stats_card(stats: dict, me: str) -> str:
         f"<span>{team(teams[0])}</span><span>{team(teams[1])}</span></div>"
         f"{body}</div>"
     )
+
+
+def notes_card(items: list[dict]) -> str:
+    """한 줄 사실들. FotMob 이 경기에 붙여 둔 문장을 팀 이름과 함께 옮긴다."""
+    if not items:
+        return plain_card("이 경기에 붙은 기록이 없습니다.")
+    rows = "".join(
+        f"<tr><td style='text-align:left'>{team(i['team'])}</td>"
+        f"<td style='text-align:left'>{esc(i['text'])}</td></tr>"
+        for i in items
+    )
+    return f"<div class='card'><table class='t'>{rows}</table></div>"

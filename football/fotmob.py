@@ -160,6 +160,7 @@ def schedule(team_id: int = TEAM_ID, league_id: int | None = None) -> list[dict]
         home = (f.get("home") or {}).get("id") == team_id
         opp = ids.get((f.get("opponent") or {}).get("id")) or (f.get("opponent") or {}).get("name", "")
         out.append(dict(
+            id=f["id"],
             date=when.strftime("%Y-%m-%d"), time=when.strftime("%H:%M"),
             round=(f.get("tournament") or {}).get("name", ""),
             team1=me if home else opp, team2=opp if home else me, score=None,
@@ -331,6 +332,52 @@ def match_stats(match_id: int, group: str = "top_stats", ttl: int = MATCH_TTL) -
     return dict(teams=teams, rows=rows)
 
 
+def season_stats(team_id: int = TEAM_ID, league_id: int | None = EPL_ID,
+                 group: str = "top_stats") -> list[dict]:
+    """이번 시즌 **팀 평균** 스탯 — 그 팀 시점으로(낸 값, 내준 값).
+
+    경기 스탯은 [홈, 원정] 순서라 우리가 어느 쪽이었는지 보고 골라야 한다.
+    한 경기라도 값이 없으면 그 항목은 그 경기를 안 센다(있는 것만 평균).
+    """
+    got: dict[str, list[list[float]]] = {}
+    order: list[str] = []
+    me = names(team_id).get(team_id, "")
+    for f in fixtures(team_id, league_id):
+        stats = match_stats(f["id"], group=group)
+        side = stats["teams"][0 if f["home"] else 1] if len(stats["teams"]) == 2 else ""
+        # 스탯은 [홈, 원정] 순서다. 우리가 아는 홈 여부와 어긋나면 평균이 조용히
+        # 뒤집히므로 여기서 멈춘다(이름은 두 소스가 같은 체계다).
+        assert not me or not side or side == me, f"{f['date']}: 스탯 순서가 어긋난다({side})"
+        for r in stats["rows"]:
+            ours, theirs = (r["home_n"], r["away_n"]) if f["home"] else (r["away_n"], r["home_n"])
+            if ours is None or theirs is None:
+                continue
+            if r["title"] not in got:
+                got[r["title"]] = [[], []]
+                order.append(r["title"])
+            got[r["title"]][0].append(ours)
+            got[r["title"]][1].append(theirs)
+    return [
+        dict(title=t, ours=sum(got[t][0]) / len(got[t][0]),
+             theirs=sum(got[t][1]) / len(got[t][1]), n=len(got[t][0]))
+        for t in order if got[t][0]
+    ]
+
+
+def insights(match_id: int, ttl: int = TEAM_TTL) -> list[dict]:
+    """FotMob 이 그 경기에 붙여 둔 한 줄 사실들('5경기 무패' 같은).
+
+    예측이 아니다 — 지금까지의 기록을 문장으로 만든 것이다. 그래서 그대로 옮긴다.
+    """
+    mf = (details(match_id, ttl).get("content") or {}).get("matchFacts") or {}
+    out = []
+    for i in mf.get("insights") or []:
+        text = i.get("text") or i.get("defaultText") or ""
+        if text:
+            out.append(dict(team_id=i.get("teamId"), text=text))
+    return out
+
+
 def match_ratings(match_id: int, team_id: int = TEAM_ID) -> list[dict]:
     """한 경기에서 그 팀 선수들의 평점(높은 순). 평점이 없는 선수(미출전)는 뺀다."""
     data = details(match_id)
@@ -449,6 +496,12 @@ def _selfcheck():
     assert xg and xg["home_n"] is not None, "xG 를 못 읽었다"
     print(f"    스탯: {stats['teams'][0]} vs {stats['teams'][1]} · "
           + " · ".join(f"{r['title']} {r['home']}-{r['away']}" for r in stats["rows"][:3]))
+
+    avg = season_stats()
+    xg_avg = next((r for r in avg if "xG" in r["title"]), None)
+    assert xg_avg and xg_avg["n"] == len(fixtures()), "시즌 평균이 경기 수와 안 맞는다"
+    print(f"    시즌 평균({xg_avg['n']}경기): "
+          + " · ".join(f"{r['title']} {r['ours']:.2f}↔{r['theirs']:.2f}" for r in avg[:3]))
 
     crests = logos()
     assert crests.get("Chelsea"), "엠블럼 주소를 못 만들었다"
