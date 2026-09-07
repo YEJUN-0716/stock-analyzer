@@ -102,3 +102,13 @@ def test_대회로_거를_수_있다(monkeypatch):
     assert fotmob.schedule(CHELSEA, league_id=fotmob.EPL_ID) == []
     assert len(fotmob.schedule(CHELSEA, league_id=133)) == 1
     assert sorted(c["name"] for c in fotmob.competitions(CHELSEA)) == ["EFL Cup", "Premier League"]
+
+
+def test_이름으로_팀_id_를_찾는다(monkeypatch):
+    """상대 폼을 보려면 상대 응답을 받아야 하고, 그러려면 이름 → id 가 필요하다.
+    순위표에 없는 컵 상대(Leeds)도 일정에서 주워야 한다."""
+    monkeypatch.setattr(fotmob, "team", lambda team_id=CHELSEA, ttl=None: PAYLOAD)
+    ids = fotmob.ids_by_name(CHELSEA)
+    assert ids["Chelsea"] == CHELSEA and ids["Fulham"] == FULHAM
+    assert ids["Leeds"] == 8463, "순위표에 없는 팀은 일정에서 id 를 얻는다"
+    assert "" not in ids

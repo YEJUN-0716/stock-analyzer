@@ -88,6 +88,29 @@ def lineup_of(match_id):
         return {}
 
 
+@st.cache_data(ttl=600, show_spinner=False)
+def team_results(team_id):
+    """**상대 팀**의 이번 시즌 리그 결과. 폼 배지와 홈원정 성적에 쓴다.
+
+    FotMob 은 '이 팀' 응답만 주므로 상대 것은 따로 받아야 한다. 안 받으면
+    승격팀(과거 시즌이 openfootball 에 없다)의 폼이 통째로 빈다.
+    """
+    if not team_id:
+        return []
+    try:
+        return fotmob.as_matches(team_id, league_id=fotmob.EPL_ID)
+    except Exception:
+        return []
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def team_ids():
+    try:
+        return fotmob.ids_by_name()
+    except Exception:
+        return {}
+
+
 @st.cache_data(ttl=3600, show_spinner=False)
 def crests():
     """팀 엠블럼 주소. 하루 종일 안 바뀌므로 캐시를 길게 잡는다."""
@@ -153,18 +176,23 @@ def main():
         standings_rows = epl.table(season)
 
     # 폼·홈원정·상대전적은 **리그 기준**이다 — 컵을 섞으면 상대와 비교가 안 된다.
-    history = sorted(epl.load_seasons(PAST)
-                     + [{**m, "season": epl.CURRENT} for m in league],
+    past = epl.load_seasons(PAST)
+    history = sorted(past + [{**m, "season": epl.CURRENT} for m in league],
                      key=lambda m: (m["date"], m.get("time", "")))
-    recent = [m for m in history if m["season"] in ALL_SEASONS[:VENUE_SEASONS]]
     current = [{**m, "season": epl.CURRENT} for m in picked]
     rank_of = {r["team"]: r for r in standings_rows}
+    ids = team_ids()
 
     def card_for(name):
+        # 우리 경기는 이미 있고, 상대 것은 그 팀 응답에서 따로 받는다.
+        cur = league if name == me else team_results(ids.get(name))
+        pool = sorted(past + [{**m, "season": epl.CURRENT} for m in cur],
+                      key=lambda m: (m["date"], m.get("time", "")))
+        recent = [m for m in pool if m["season"] in ALL_SEASONS[:VENUE_SEASONS]]
         return view.team_card(
             name,
             rank_of.get(name),
-            epl.form(history, name, FORM_N),
+            epl.form(pool, name, FORM_N),
             epl.venue_record(recent, name, home=True),
             epl.venue_record(recent, name, home=False),
         )
